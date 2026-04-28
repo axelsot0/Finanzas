@@ -2,7 +2,8 @@
 //  DashboardView.swift
 //  Finanzas
 //
-//  Pantalla principal: saldo, ahorro, metas, gasto del mes y movimientos recientes.
+//  Pantalla principal: 4 tarjetas resumen + metas + movimientos recientes.
+//  Fondo con degradado leve cuyo color depende de la salud financiera.
 //
 
 import SwiftUI
@@ -14,7 +15,9 @@ struct DashboardView: View {
     @Query(sort: \Goal.priority) private var goals: [Goal]
     @Query(sort: \Transaction.occurredAt, order: .reverse) private var transactions: [Transaction]
 
-    @State private var showNewTransaction = false
+    @State private var newKind: TransactionKind? = nil
+
+    // MARK: - Body
 
     var body: some View {
         NavigationStack {
@@ -23,32 +26,37 @@ struct DashboardView: View {
                     headerGreeting
                         .padding(.bottom, 4)
 
-                    // Cards principales
+                    // Fila 1: Saldo total | Tarjeta
                     HStack(spacing: 12) {
                         SummaryCard(
                             title: "Saldo total",
-                            amount: Money.format(totalBalance),
-                            subtitle: "\(accounts.filter { $0.type != .credit }.count) cuentas",
+                            amount: Money.format(liquidBalance),
+                            subtitle: liquidAccountsLabel,
                             icon: "building.columns.fill"
                         )
                         SummaryCard(
-                            title: "Ahorro total",
-                            amount: Money.format(totalSavings),
-                            subtitle: "Distribuido en \(goals.count) metas",
-                            icon: "leaf.fill"
+                            title: "Tarjeta · quincena",
+                            amount: Money.format(cardUsageBiweek),
+                            subtitle: "Pagado mes: \(Money.format(cardPaymentsMonth))",
+                            icon: "creditcard.fill"
                         )
                     }
 
-                    SummaryCard(
-                        title: "Gasto del mes",
-                        amount: Money.format(monthSpent),
-                        subtitle: "Quincena: \(Money.format(biweekSpent))",
-                        trend: "\(transactions.filter { $0.kind == .expense }.count) movimientos",
-                        trendIsPositive: false,
-                        progress: monthBudgetProgress,
-                        progressColor: monthHealth.color,
-                        icon: "chart.line.downtrend.xyaxis"
-                    )
+                    // Fila 2: Ahorro (goals) | Gasto real
+                    HStack(spacing: 12) {
+                        SummaryCard(
+                            title: "Ahorro",
+                            amount: Money.format(savingsBalance),
+                            subtitle: "\(goals.count) metas activas",
+                            icon: "leaf.fill"
+                        )
+                        SummaryCard(
+                            title: "Gasto · quincena",
+                            amount: Money.format(realExpensesBiweek),
+                            subtitle: "Mes: \(Money.format(realExpensesMonth))",
+                            icon: "chart.line.downtrend.xyaxis"
+                        )
+                    }
 
                     sectionHeader("Tus metas", system: "target") {
                         NavigationLink("Ver todas") { GoalsView() }
@@ -69,7 +77,7 @@ struct DashboardView: View {
                     }
 
                     sectionHeader("Movimientos recientes", system: "clock.arrow.circlepath") {
-                        NavigationLink("Ver todos") { TransactionsView() }
+                        NavigationLink("Ver todos") { TransactionsListView() }
                             .font(Theme.Font.caption)
                             .foregroundStyle(Theme.accent)
                     }
@@ -98,12 +106,16 @@ struct DashboardView: View {
                 .padding(.bottom, 80)
             }
             .scrollIndicators(.hidden)
-            .background(Theme.background.ignoresSafeArea())
+            .background(healthGradient.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showNewTransaction = true
+                    Menu {
+                        ForEach(TransactionKind.allCases) { kind in
+                            Button { newKind = kind } label: {
+                                Label(kind.label, systemImage: kind.icon)
+                            }
+                        }
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .semibold))
@@ -113,8 +125,8 @@ struct DashboardView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showNewTransaction) {
-                NewTransactionView()
+            .sheet(item: $newKind) { kind in
+                TransactionEditorView(mode: .create(kind))
             }
         }
     }
@@ -130,6 +142,13 @@ struct DashboardView: View {
             Text("Tus finanzas")
                 .font(Theme.Font.display)
                 .foregroundStyle(Theme.textPrimary)
+            HStack(spacing: 6) {
+                Circle().fill(globalHealth.color).frame(width: 8, height: 8)
+                Text(healthLabel)
+                    .font(Theme.Font.caption.weight(.medium))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 8)
@@ -146,7 +165,8 @@ struct DashboardView: View {
 
     // MARK: - Sections
 
-    private func sectionHeader(_ title: String, system: String, @ViewBuilder trailing: () -> some View = { EmptyView() }) -> some View {
+    private func sectionHeader(_ title: String, system: String,
+                               @ViewBuilder trailing: () -> some View = { EmptyView() }) -> some View {
         HStack {
             Image(systemName: system)
                 .font(.system(size: 13, weight: .semibold))
@@ -174,43 +194,44 @@ struct DashboardView: View {
         .cardStyle()
     }
 
-    // MARK: - Cálculos derivados
+    // MARK: - Métricas (Fase 1)
 
-    private var totalBalance: Double {
-        accounts.filter { $0.type != .credit && $0.isActive }
-            .reduce(0) { $0 + $1.calculatedBalance }
+    private var biweekRange: ClosedRange<Date> { DateRanges.currentBiweek() }
+    private var monthRange:  ClosedRange<Date> { DateRanges.currentMonth() }
+
+    private var liquidBalance:        Double { Metrics.liquidBalance(accounts) }
+    private var savingsBalance:       Double { Metrics.savingsBalance(accounts) }
+    private var cardUsageBiweek:      Double { Metrics.cardUsage(transactions, in: biweekRange) }
+    private var cardPaymentsMonth:    Double { Metrics.cardPayments(transactions, in: monthRange) }
+    private var realExpensesBiweek:   Double { Metrics.realExpenses(transactions, in: biweekRange) }
+    private var realExpensesMonth:    Double { Metrics.realExpenses(transactions, in: monthRange) }
+
+    private var liquidAccountsLabel: String {
+        let n = accounts.filter { $0.isActive && [.payroll, .checking, .cash].contains($0.type) }.count
+        return "\(n) cuentas líquidas"
     }
 
-    private var totalSavings: Double {
-        goals.reduce(0) { $0 + $1.savedAmount }
+    // MARK: - Salud global (Fase 2)
+
+    private var globalHealth: HealthStatus {
+        let ratio = Metrics.healthRatio(transactions, accounts: accounts, in: biweekRange)
+        return Metrics.health(ratio: ratio)
     }
 
-    private var monthSpent: Double {
-        let range = DateRanges.currentMonth()
-        return transactions
-            .filter { range.contains($0.occurredAt) && $0.kind == .expense }
-            .reduce(0) { $0 + $1.amount }
+    private var healthLabel: String {
+        switch globalHealth {
+        case .good:    return "Salud financiera buena"
+        case .warning: return "Salud financiera con mejoras"
+        case .danger:  return "Salud financiera deficiente"
+        case .neutral: return "Sin datos suficientes"
+        }
     }
 
-    private var biweekSpent: Double {
-        let range = DateRanges.currentBiweek()
-        return transactions
-            .filter { range.contains($0.occurredAt) && $0.kind == .expense }
-            .reduce(0) { $0 + $1.amount }
-    }
-
-    private var monthBudgetProgress: Double {
-        // Suma de presupuestos como referencia.
-        let budgets: Double = (try? context.fetch(FetchDescriptor<Category>()))?
-            .compactMap { $0.monthlyBudget }
-            .reduce(0, +) ?? 0
-        guard budgets > 0 else { return min(1, monthSpent / 30_000) }
-        return min(1, monthSpent / budgets)
-    }
-
-    private var monthHealth: HealthStatus {
-        if monthBudgetProgress < 0.8 { return .good }
-        if monthBudgetProgress < 1.0 { return .warning }
-        return .danger
+    private var healthGradient: LinearGradient {
+        LinearGradient(
+            colors: [Theme.background, globalHealth.color.opacity(0.18)],
+            startPoint: .top,
+            endPoint:   .bottom
+        )
     }
 }

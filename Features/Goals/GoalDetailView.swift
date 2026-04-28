@@ -12,9 +12,12 @@ import Charts
 
 struct GoalDetailView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @Bindable var goal: Goal
     @State private var showQuickAdd = false
     @State private var quickAmountText: String = ""
+    @State private var showEditor = false
+    @State private var showDeleteConfirm = false
 
     private var sortedAllocations: [GoalAllocation] {
         goal.allocations.sorted { ($0.transaction?.occurredAt ?? .distantPast) > ($1.transaction?.occurredAt ?? .distantPast) }
@@ -161,8 +164,40 @@ struct GoalDetailView: View {
         .scrollIndicators(.hidden)
         .background(Theme.background.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button { showEditor = true } label: {
+                        Label("Editar", systemImage: "pencil")
+                    }
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Label("Eliminar", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                }
+            }
+        }
         .sheet(isPresented: $showQuickAdd) {
             quickAddSheet
+        }
+        .sheet(isPresented: $showEditor) {
+            GoalEditorView(mode: .edit(goal))
+        }
+        .confirmationDialog("¿Eliminar meta?",
+                            isPresented: $showDeleteConfirm,
+                            titleVisibility: .visible) {
+            Button("Eliminar", role: .destructive) {
+                context.delete(goal)
+                try? context.save()
+                dismiss()
+            }
+        } message: {
+            Text("Se borrarán los aportes asociados. No se puede deshacer.")
         }
     }
 

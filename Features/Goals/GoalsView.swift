@@ -9,8 +9,11 @@ import SwiftUI
 import SwiftData
 
 struct GoalsView: View {
+    @Environment(\.modelContext) private var context
     @Query(sort: [SortDescriptor(\Goal.priority), SortDescriptor(\Goal.name)]) private var goals: [Goal]
     @State private var showNewGoal = false
+    @State private var editingGoal: Goal? = nil
+    @State private var goalToDelete: Goal? = nil
 
     private var totalSaved: Double { goals.reduce(0) { $0 + $1.savedAmount } }
     private var totalTarget: Double { goals.reduce(0) { $0 + $1.targetAmount } }
@@ -58,7 +61,18 @@ struct GoalsView: View {
                         ForEach(goals) { goal in
                             NavigationLink { GoalDetailView(goal: goal) } label: {
                                 GoalCard(goal: goal)
-                            }.buttonStyle(.plain)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button { editingGoal = goal } label: {
+                                    Label("Editar", systemImage: "pencil")
+                                }
+                                Button(role: .destructive) {
+                                    goalToDelete = goal
+                                } label: {
+                                    Label("Eliminar", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                 }
@@ -83,7 +97,27 @@ struct GoalsView: View {
                 }
             }
             .sheet(isPresented: $showNewGoal) {
-                NewGoalView()
+                GoalEditorView(mode: .create)
+            }
+            .sheet(item: $editingGoal) { g in
+                GoalEditorView(mode: .edit(g))
+            }
+            .confirmationDialog(
+                "¿Eliminar meta?",
+                isPresented: Binding(get: { goalToDelete != nil },
+                                     set: { if !$0 { goalToDelete = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("Eliminar", role: .destructive) {
+                    if let g = goalToDelete {
+                        context.delete(g)
+                        try? context.save()
+                    }
+                    goalToDelete = nil
+                }
+                Button("Cancelar", role: .cancel) { goalToDelete = nil }
+            } message: {
+                Text("Se borrarán los aportes asociados. No se puede deshacer.")
             }
         }
     }

@@ -7,7 +7,10 @@
       "Bash(git init *)",
       "Bash(git branch *)",
       "Bash(git -C H:/Finanzas add .)",
-      "Bash(git -C H:/Finanzas commit -m 'feat: MVP transacciones — editor unificado, list con swipe, modelos completos *)"
+      "Bash(git -C H:/Finanzas commit -m 'feat: MVP transacciones — editor unificado, list con swipe, modelos completos *)",
+      "Bash(gh repo *)",
+      "Bash(git -C H:/Finanzas commit -m 'feat: dashboard metrics correctos + goals CRUD + gradiente salud *)",
+      "Bash(git -C H:/Finanzas push origin main)"
     ]
   }
 }
