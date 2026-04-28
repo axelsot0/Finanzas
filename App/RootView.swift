@@ -25,6 +25,9 @@ struct RootView: View {
 
             GoalsView()
                 .tabItem { Label("Metas", systemImage: "target") }
+
+            CategoriesView()
+                .tabItem { Label("Categorías", systemImage: "tag.fill") }
         }
         .onAppear {
             if accounts.isEmpty {
