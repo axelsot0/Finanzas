@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C H:/Finanzas status)",
+      "Bash(git -C H:/Finanzas log --oneline -5)",
+      "Bash(gh auth *)",
+      "Bash(git init *)",
+      "Bash(git branch *)",
+      "Bash(git -C H:/Finanzas add .)",
+      "Bash(git -C H:/Finanzas commit -m 'feat: MVP transacciones — editor unificado, list con swipe, modelos completos *)"
+    ]
+  }
+}
